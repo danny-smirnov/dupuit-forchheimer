@@ -17,11 +17,19 @@ import matplotlib.animation as animation
 def diff_coef(z_nm):
     return dt * alpha * (2 * z_nm) ** (1 / 2) / (dx ** 2)
 
+def well_flow_rate(y, q0):
+    assert 0 <= y <= L, 'Invalid y coordinate'
+    x0, y0, x1, y1 = 0, p1, L, p2
+    coef = (y1-y0)/(x1-x0)
+    bias = y1 - coef*x1
+    return q0/L*(coef*y + bias)
+
+
 
 if __name__ == '__main__':
 
     # read .dat data
-    with open('./data/4085.dat', 'r') as f:
+    with open('./data/1501.dat', 'r') as f:
         dat = f.read().split()
 
     # save gas and oil values
@@ -30,31 +38,30 @@ if __name__ == '__main__':
     oil = []
     for i in range(len(dat) // 3):
         days.append(float(dat[i * 3]))
-        gas.append(float(dat[i * 3 + 1]))
-        oil.append(float(dat[i * 3 + 2]))
+        oil.append(float(dat[i * 3 + 1])*cube_to_kg)
+        gas.append(float(dat[i * 3 + 2]))
 
     # interpolate oil
     debit = interp1d(days, oil, fill_value='extrapolate')
-    n_x = 10000
-    n_t = 1000
-
+    n_x = 5000
+    n_t = int(max(days))
     dx = W / n_x
-    dt = days[-1] / (n_t*50)
-    print(t0)
+    dt = days[-1] / t0
     sol = np.zeros((n_t, n_x + 1))
 
     # initial condition
     sol[0] = np.array([h_0 for _ in range(n_x + 1)])
-
     for t, curr_t in enumerate(tqdm(np.linspace(0, len(oil), n_t - 1))):
         A = np.zeros((n_x + 1, n_x + 1))
         b = np.zeros(n_x + 1)
 
         # left boundary condition
-        q_o = 2*debit(curr_t) / (q0)
-        b[0] = -sol[t][1] + diff_coef(sol[t][1]) * (q_o * dt) / (alpha * phi)
+        y = L/2
+        q_o = well_flow_rate(y, debit(curr_t)) / (2*alpha*phi)
+        b[0] = -sol[t][1] + diff_coef(sol[t][1]) * (q_o * dx) / (alpha * phi)
+        A[0][1] = - (1 - 2 * diff_coef(sol[t][1]))
         A[0][0] = -2 * diff_coef(sol[t][1])
-        A[0][1] = -(1 - 2 * diff_coef(sol[t][1]))
+
 
         # finite diff scheme
         for i in range(1, n_x):
@@ -69,6 +76,9 @@ if __name__ == '__main__':
         A[n_x][n_x] = -2 * diff_coef(sol[t][n_x - 1])
 
         x = tridiagonal_solution(A, b)
+        # x = np.linalg.solve(A, b)
+        if x[0] < zw1:
+            print(t)
         f = lambda v: zw2 if v < zw2 else v
         x = np.vectorize(f)(x)
 
@@ -77,19 +87,18 @@ if __name__ == '__main__':
 
     t = n_t
     x = sol
-
     fig, ax = plt.subplots()
-    ax.axis([0, W, 0, h_0])
+    ax.axis([0, W, (2*zw2)**(1/2), (2*h_0)**(1/2)])
     l, = ax.plot([], [], label='GOC')
 
 
     def animate(i):
-        l.set_data(np.linspace(0, W, n_x + 1), sol[i])
+        l.set_data(np.linspace(0, W, n_x + 1), np.sqrt(2*sol[i]))
 
 
     ani = animation.FuncAnimation(fig, animate, frames=t)
-    plt.plot(np.linspace(0, W, n_x + 1), [zw2 for _ in range(n_x+1)], label='Well bottom')
-    plt.plot(np.linspace(0, W, n_x + 1), [zw1 for _ in range(n_x+1)], label='Well top')
+    plt.plot(np.linspace(0, W, n_x + 1), [(2*zw2)**(1/2) for _ in range(n_x+1)], label='Well bottom')
+    plt.plot(np.linspace(0, W, n_x + 1), [(2*zw1)**(1/2) for _ in range(n_x+1)], label='Well top')
     plt.legend()
     plt.show()
 

@@ -42,7 +42,7 @@ def plot(sol):
     plt.show()
 
 
-def solve(path, nt, nx, y):
+def solve(path, nt, nx):
     with open(path, 'r') as f:
         dat = f.read().split()
 
@@ -65,12 +65,12 @@ def solve(path, nt, nx, y):
 
     # initial condition
     sol[0] = np.array([h_0 for _ in range(n_x + 1)])
-    for t, curr_t in enumerate(np.linspace(0, len(oil), n_t - 1)):
+    for t, curr_t in enumerate(tqdm(np.linspace(0, len(oil), n_t - 1))):
         A = np.zeros((n_x + 1, n_x + 1))
         b = np.zeros(n_x + 1)
 
         # left boundary condition
-        q_o = well_flow_rate(y, debit(curr_t)) / (2 * alpha * phi)
+        q_o = well_flow_rate(y, debit(curr_t)) / (2 * alpha * phi)/100
         # q_o = 0
         b[0] = -sol[t][1] + diff_coef(sol[t][1], dt, dx) * (q_o * dx) / (alpha * phi)
         A[0][1] = - (1 - 2 * diff_coef(sol[t][1], dt, dx))
@@ -99,11 +99,33 @@ def solve(path, nt, nx, y):
 
 if __name__ == '__main__':
     path = './data/1501.dat'
-    nt = 100
-    nx = 1000
-    n_y = 100
+    nx = 250
+    nt = 250
+    ny = 10
+    points = np.linspace(0, L, ny)
     surface = []
-    y_steps = np.linspace(0, L, n_y)
-    for y in tqdm(y_steps):
-        surface.append(solve(path, nt, nx, y))
+    for y in points:
+        sol = solve(path, nt, nx, y)
+        surface.append(sol)
     surface = np.array(surface)
+
+
+
+    def update_plot(frame_number):
+        ax.clear()
+        ax.set_zlim(zw2-0.5, 7)
+        ax.plot_surface(X, Y, surface[:, frame_number, :], cmap="magma")
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    X = np.linspace(0, 150, nx+1)
+    Y = np.linspace(0, L, ny)
+    X, Y = np.meshgrid(X, Y)
+
+    plot = [ax.plot_surface(X, Y, surface[:, 0, :], color='0.75', rstride=1, cstride=1)]
+    ax.set_zlim(zw2-0.5, 7)
+    ani = animation.FuncAnimation(fig, update_plot, nt, interval=1)
+
+    plt.show()
+

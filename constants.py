@@ -8,7 +8,7 @@ g = 9.80665      # acceleration of gravity
 mu = 18.76       # dynamic viscosity
 phi = 0.266      # effective porosity
 
-alpha = k*drho*g/(mu*phi)/10000
+alpha = k*drho*g/(mu*phi)/1000
 h_0 = 1/2*7**2         # initial height
 W = 150         # half of the drain length
 L = 1171.3      # well length
@@ -17,7 +17,9 @@ zw1 = h_0*0.8
 zw2 = h_0*0.75
 cube_to_kg = 800  # coefficient to translate m^3 to kg
 beta = 0.191794288875527
-
-
-
+# beta = 1
+Bo = 1.069
+Bg = 0.00935
+Rs = 300
+gamma = 119
 

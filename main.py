@@ -24,21 +24,21 @@ def K(y):
 
 
 def well_flow_rate(y, q0, prev_y, dy):
-    delta = np.minimum(np.maximum((np.full(prev_y.shape, zw1) - prev_y), 0) / dw, 1)
-    ny = prev_y.shape[0]
+    well_top = np.full(prev_y.shape, zw1)
+    delta = np.minimum(np.maximum(well_top - prev_y, 0), dw)/dw
     y_length = L * (y / (ny - 1))
     rate_in_point = (1 - delta[y] ** 2) * K(y_length)
-    all_ys = np.linspace(0, L, ny)
-    rate_overall = [(1 - delta[pt] ** 2) * K(y_len) for pt, y_len in enumerate(all_ys)]
+    all_ys = np.linspace(0, L, delta.shape[0])
+    rate_overall = (1-delta**2)*K(all_ys)
     int_rate_overall = simps(y=rate_overall, dx=dy)
-    if int_rate_overall <= 0:
+    if max(q0 * (rate_in_point / int_rate_overall), 0) is np.nan:
         return 0
     return max(q0 * (rate_in_point / int_rate_overall), 0)
 
 
 def psi(gnc, dy):
     all_ys = np.linspace(0, L, gnc.shape[0])
-    delta = np.minimum(np.maximum((np.full(gnc.shape, zw2) - gnc), 0) / dw, 1)
+    delta = np.minimum(np.maximum((np.full(gnc.shape, (2*zw1)**(1/2)) - (2*gnc)**(1/2)), 0) / dw, 1)
     gas_diff = [(delta[pt] ** 2) * K(y_len) for pt, y_len in enumerate(all_ys)]
     oil_diff = [(1-delta[pt] ** 2) * K(y_len) for pt, y_len in enumerate(all_ys)]
     gas_rate = simps(y=gas_diff, dx=dy)
@@ -62,6 +62,8 @@ def plot(sol):
     plt.legend()
     plt.show()
 
+def stair(x, step):
+    return step[int(x - 1e-8)]
 
 def solve(path, nt, nx, ny):
     with open(path, 'r') as f:
@@ -72,11 +74,10 @@ def solve(path, nt, nx, ny):
     oil = []
     for i in range(len(dat) // 3):
         days.append(int(dat[i * 3]))
-        oil.append(float(dat[i * 3 + 1]) * cube_to_kg)
+        oil.append(float(dat[i * 3 + 1])*800)
         gas.append(float(dat[i * 3 + 2]))
     # interpolate oil
     debit = interp1d(days, oil, fill_value='extrapolate')
-    Rs = gas[0]/oil[0]
     # to predict gas
     gas_init = gas[0]
     gas_pred = []
@@ -89,14 +90,15 @@ def solve(path, nt, nx, ny):
 
     # initial condition
     sol[0] = np.full((nx, ny), h_0)
-    for t, curr_t in enumerate(tqdm(np.linspace(0, len(oil), nt - 1))):
+    for t, curr_t in enumerate(tqdm(np.linspace(0, max(days), nt - 1))):
         for y, curr_y in enumerate(np.linspace(0, L, ny)):
             A = np.zeros((nx, nx))
             b = np.zeros(nx)
             # left boundary condition
-
+            # x_debit = np.linspace(curr_t, min(curr_t + dt, max(days)), 10 ** 3)
+            # y_debit = [stair(val, oil) for val in x_debit]
+            # current_debit = simps(y_debit, x_debit)
             q_o = well_flow_rate(y, debit(curr_t), sol[t][0][:], dy) / (2 * alpha * phi)
-
             b[0] = -sol[t][1][y] + diff_coef(sol[t][1][y], dt, dx) * (q_o * dx) / (alpha * phi)
             A[0][1] = - (1 - 2 * diff_coef(sol[t][1][y], dt, dx))
             A[0][0] = -2 * diff_coef(sol[t][1][y], dt, dx)
@@ -114,7 +116,7 @@ def solve(path, nt, nx, ny):
             A[nx - 1][nx - 1] = -2 * diff_coef(sol[t][nx - 1][y], dt, dx)
 
             x = tridiagonal_solution(A, b)
-
+            #
             # Ab = np.zeros((3, nx))
             # Ab[0, 1:] = A.diagonal(1)
             # Ab[1, :] = A.diagonal()
@@ -127,12 +129,13 @@ def solve(path, nt, nx, ny):
 
         # counting gas
         psi_coef = psi(sol[t, 0, :], dy)
-        Qg = debit(curr_t)/cube_to_kg * (psi_coef*gamma/Bg + Rs/Bo)
-        qg = Bg*(Qg - debit(curr_t)/(Bo*cube_to_kg))
+        Rs = gas_init
+        Qg = debit(curr_t) * (psi_coef*gamma/Bg + Rs/Bo)
+        qg = Bg*(Qg - debit(curr_t)/(Bo))
         gas_pred.append(qg)
 
 
-    plt.plot(gas_pred, label='gas pred')
+    plt.plot(np.linspace(0, 169, len(gas_pred)), gas_pred, label='gas pred')
     plt.plot(gas, label='gas')
     plt.plot(oil, label='oil')
     plt.legend()
@@ -141,10 +144,9 @@ def solve(path, nt, nx, ny):
 
 
 if __name__ == '__main__':
-    t1 = time.time()
     path = './data/1501.dat'
     nx = 100
-    nt = 169
+    nt = 200
     ny = 100
 
     surface, gas = solve(path, nt, nx, ny)
@@ -204,6 +206,7 @@ if __name__ == '__main__':
                             vmax=np.max(np.abs(z)))]
     ax.set_zlim((2 * zw2) ** (1 / 2) - 0.5, 7)
     ani = animation.FuncAnimation(fig, update_plot, nt, interval=1)
+    # ani.save('some.gif', writer='imagemagick', fps=30)
 
     plt.show()
 
